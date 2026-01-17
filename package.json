@@ -1,0 +1,11 @@
+{
+    "name": "ai-support-system",
+    "private": true,
+    "devDependencies": {
+        "turbo": "^2.0.0"
+    },
+    "scripts": {
+        "dev": "turbo dev"
+    },
+    "packageManager": "pnpm@9.0.0"
+}
