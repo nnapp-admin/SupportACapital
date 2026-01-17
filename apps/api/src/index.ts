@@ -46,8 +46,13 @@ declare global {
     var __HONO_SERVER_STARTED__: boolean | undefined
 }
 
+import { seedAgents } from './db/seed-agents'
+
 if (!global.__HONO_SERVER_STARTED__) {
     global.__HONO_SERVER_STARTED__ = true
+
+    // Seed agents on startup
+    seedAgents().catch(console.error)
 
     serve({
         fetch: app.fetch,

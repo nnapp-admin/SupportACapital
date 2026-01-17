@@ -34,3 +34,15 @@ model Payment {
   amount  Int
   status  String
 }
+
+model Agent {
+  id           String   @id
+  name         String
+  description  String
+  type         String
+  icon         String
+  color        String
+  instructions String   @db.Text
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}

@@ -45,20 +45,21 @@ export async function handleChat(userId: string, message: string, conversationId
         ? routing.intent
         : 'support'
 
+    // @ts-ignore: Stale prisma types
+    const agentConfig = await prisma.agent.findUnique({ where: { id: intent } })
+
+    const system = agentConfig?.instructions || 'You are a helpful Customer Support Agent.'
     let tools = {}
-    let system = ''
 
     switch (intent) {
         case 'order':
             tools = createOrderTools(userId)
-            system = 'You are an Order Support Agent. Use your tools to check order status, details, and tracking. Always look up the order if the user asks.'
             break
         case 'billing':
             tools = createBillingTools(userId)
-            system = 'You are a Billing Support Agent. Use your tools to help with refunds, payments, and invoices.'
             break
         default:
-            system = 'You are a helpful Customer Support Agent. You can help with general inquiries. If the user asks about orders or billing, I will route them to the right agent.'
+            // Support agent has no extra tools currently
             break
     }
 
