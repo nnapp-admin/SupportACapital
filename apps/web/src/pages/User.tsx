@@ -138,22 +138,24 @@ export default function User() {
                 prev.map(m => {
                     if (m.id !== assistantId) return m
 
-                    // If still only thinking bubbles → keep them
-                    if (Array.isArray(m.content)) return m
+                    // If we received text, use it
+                    if (fullContent) return m
 
-                    // If empty string somehow → safe fallback
-                    if (!m.content || (typeof m.content === 'string' && m.content.trim() === '')) {
-                        return {
-                            ...m,
-                            content: '⚠️ Something went wrong. Please try again.'
-                        }
+                    // If we got no text (empty stream), waiting for reload...
+                    // But just in case, set a temporary error message if we don't reload fast enough
+                    return {
+                        ...m,
+                        content: Array.isArray(m.content)
+                            ? '...' // Show ellipsis while reloading
+                            : m.content
                     }
-
-                    return m
                 })
             )
 
             await loadConversations()
+            if (activeId) {
+                await loadMessages(activeId)
+            }
         } catch (error) {
             console.error(error)
             setMessages(prev => [

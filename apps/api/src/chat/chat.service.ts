@@ -48,7 +48,13 @@ export async function handleChat(userId: string, message: string, conversationId
     // @ts-ignore: Stale prisma types
     const agentConfig = await prisma.agent.findUnique({ where: { id: intent } })
 
-    const system = agentConfig?.instructions || 'You are a helpful Customer Support Agent.'
+    const system = `
+${agentConfig?.instructions || 'You are a helpful Customer Support Agent.'}
+
+IMPORTANT:
+You MUST always respond with a final message to the user.
+Do not end your reasoning without a reply.
+`
     let tools = {}
 
     switch (intent) {
@@ -74,11 +80,22 @@ export async function handleChat(userId: string, message: string, conversationId
             { role: 'user', content: message }
         ],
         onFinish: async (result) => {
-            const assistantMessages =
+            let assistantMessages =
                 result.response?.messages ??
                 (result.text
                     ? [{ role: 'assistant', content: result.text }]
                     : [])
+
+            if (assistantMessages.length === 0) {
+                assistantMessages = [{
+                    role: 'assistant',
+                    content: intent === 'order'
+                        ? 'I can help you with your order. Please share your order ID or registered email.'
+                        : intent === 'billing'
+                            ? 'I can help with billing issues. Could you describe the problem?'
+                            : 'How can I assist you today?'
+                }]
+            }
 
             const newMsgs = [
                 { role: 'user', content: message },
