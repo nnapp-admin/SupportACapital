@@ -81,7 +81,8 @@ export default function User() {
         setMessages(prev => [...prev, userMessage])
 
         const assistantId = (Date.now() + 1).toString()
-        // ✅ Fix: Use a placeholder state
+
+        // Fix: Use a placeholder state
         setMessages(prev => [
             ...prev,
             {
@@ -93,19 +94,16 @@ export default function User() {
 
         try {
             let fullContent = ''
-            let receivedAnyChunk = false
 
             await streamChat(
                 content,
                 activeId || null,
                 chunk => {
-                    receivedAnyChunk = true
                     fullContent += chunk
-
                     setMessages(prev =>
                         prev.map(m =>
                             m.id === assistantId
-                                ? { ...m, content: fullContent || '…' }
+                                ? { ...m, content: fullContent }
                                 : m
                         )
                     )
@@ -113,18 +111,21 @@ export default function User() {
                 routing => {
                     setCurrentRouting(routing)
 
-                    // show routing as a bubble immediately
+                    // Additive routing update
                     setMessages(prev =>
                         prev.map(m =>
                             m.id === assistantId
                                 ? {
                                     ...m,
-                                    content: [
-                                        {
-                                            type: 'thinking',
-                                            text: `Routing to ${routing.agent.toUpperCase()} agent`
-                                        }
-                                    ]
+                                    content: Array.isArray(m.content)
+                                        ? [
+                                            ...m.content,
+                                            {
+                                                type: 'thinking',
+                                                text: `Routing to ${routing.agent.toUpperCase()} agent`
+                                            }
+                                        ]
+                                        : m.content
                                 }
                                 : m
                         )
@@ -132,16 +133,25 @@ export default function User() {
                 }
             )
 
-            // 🛡️ Final safety net
-            if (!receivedAnyChunk) {
-                setMessages(prev =>
-                    prev.map(m =>
-                        m.id === assistantId
-                            ? { ...m, content: '⚠️ No response generated. Please retry.' }
-                            : m
-                    )
-                )
-            }
+            // Final safety check
+            setMessages(prev =>
+                prev.map(m => {
+                    if (m.id !== assistantId) return m
+
+                    // If still only thinking bubbles → keep them
+                    if (Array.isArray(m.content)) return m
+
+                    // If empty string somehow → safe fallback
+                    if (!m.content || (typeof m.content === 'string' && m.content.trim() === '')) {
+                        return {
+                            ...m,
+                            content: '⚠️ Something went wrong. Please try again.'
+                        }
+                    }
+
+                    return m
+                })
+            )
 
             await loadConversations()
         } catch (error) {
