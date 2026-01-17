@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { Link } from 'react-router-dom'
 import { getConversations, getConversation, streamChat } from '../api/client'
 
 export default function User() {
@@ -86,6 +87,54 @@ export default function User() {
         }
     }
 
+    const renderContent = (content: any) => {
+        // Handle string content
+        if (typeof content === 'string') {
+            return content
+        }
+
+        // Handle array content (AI SDK messages with tool calls)
+        if (Array.isArray(content)) {
+            return content.map((part, i) => {
+                if (typeof part === 'string') {
+                    return <span key={i}>{part}</span>
+                }
+
+                if (part.type === 'text') {
+                    return <span key={i}>{part.text}</span>
+                }
+
+                if (part.type === 'tool-call') {
+                    return (
+                        <div key={i} style={styles.toolCall}>
+                            🔧 Calling tool: <strong>{part.toolName}</strong>
+                        </div>
+                    )
+                }
+
+                if (part.type === 'tool-result') {
+                    return (
+                        <div key={i} style={styles.toolResult}>
+                            ✅ Tool completed
+                        </div>
+                    )
+                }
+
+                return null
+            })
+        }
+
+        // Handle object content - try to extract text or stringify
+        if (typeof content === 'object' && content !== null) {
+            if (content.text) {
+                return content.text
+            }
+            return JSON.stringify(content)
+        }
+
+        return String(content)
+    }
+
     const getAgentColor = (agent: string) => {
         switch (agent) {
             case 'order':
@@ -103,6 +152,17 @@ export default function User() {
         <div style={styles.app}>
             {/* Sidebar */}
             <aside style={styles.sidebar}>
+                <div style={styles.navHeader}>
+                    <Link to="/" style={styles.navLinkActive}>
+                        💬 User Chat
+                    </Link>
+                    <Link to="/admin" style={styles.navLink}>
+                        ⚙️ Admin
+                    </Link>
+                </div>
+
+                <div style={styles.divider} />
+
                 <button onClick={onCreateChat} style={styles.newChatBtn}>
                     + New Chat
                 </button>
@@ -126,6 +186,43 @@ export default function User() {
                     </div>
                 ))}
             </aside>
+
+            {/* User Details Sidebar */}
+            {activeId && (
+                <aside style={styles.userDetailsSidebar}>
+                    <div style={styles.userDetailsHeader}>
+                        <div style={styles.userAvatar}>
+                            👤
+                        </div>
+                        <div>
+                            <h3 style={styles.userName}>Demo User</h3>
+                            <p style={styles.userEmail}>demo-user@example.com</p>
+                        </div>
+                    </div>
+
+                    <div style={styles.userStats}>
+                        <div style={styles.statItem}>
+                            <div style={styles.statLabel}>Conversation ID</div>
+                            <div style={styles.statValue}>{activeId.slice(0, 8)}...</div>
+                        </div>
+                        <div style={styles.statItem}>
+                            <div style={styles.statLabel}>Total Messages</div>
+                            <div style={styles.statValue}>{messages.length}</div>
+                        </div>
+                        {currentRouting && (
+                            <div style={styles.statItem}>
+                                <div style={styles.statLabel}>Current Agent</div>
+                                <div style={{
+                                    ...styles.statValue,
+                                    color: getAgentColor(currentRouting.agent)
+                                }}>
+                                    {currentRouting.agent.toUpperCase()}
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                </aside>
+            )}
 
             {/* Chat */}
             <main style={styles.chat}>
@@ -173,7 +270,7 @@ export default function User() {
                                     color: m.role === 'user' ? '#fff' : '#111'
                                 }}
                             >
-                                {m.content}
+                                {renderContent(m.content)}
                             </div>
                         </div>
                     ))}
@@ -222,7 +319,53 @@ const styles: Record<string, React.CSSProperties> = {
         borderRight: '1px solid #e5e7eb',
         padding: 16,
         background: '#fff',
-        overflowY: 'auto'
+        overflowY: 'auto',
+        display: 'flex',
+        flexDirection: 'column'
+    },
+
+    navHeader: {
+        display: 'flex',
+        gap: 8,
+        marginBottom: 16
+    },
+
+    navLink: {
+        flex: 1,
+        textDecoration: 'none',
+        color: '#6b7280',
+        padding: '8px',
+        borderRadius: 6,
+        fontSize: 13,
+        fontWeight: 500,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 6,
+        border: '1px solid transparent',
+        transition: 'all 0.2s'
+    },
+
+    navLinkActive: {
+        flex: 1,
+        textDecoration: 'none',
+        color: '#111827',
+        background: '#f3f4f6',
+        padding: '8px',
+        borderRadius: 6,
+        fontSize: 13,
+        fontWeight: 600,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 6,
+        border: '1px solid #e5e7eb'
+    },
+
+    divider: {
+        height: 1,
+        background: '#e5e7eb',
+        margin: '0 0 16px 0'
     },
 
     newChatBtn: {
@@ -304,6 +447,95 @@ const styles: Record<string, React.CSSProperties> = {
         color: '#fff',
         fontWeight: 500,
         cursor: 'pointer'
+    },
+
+    userDetailsSidebar: {
+        width: 280,
+        borderRight: '1px solid #e5e7eb',
+        padding: 20,
+        background: '#fff',
+        overflowY: 'auto'
+    },
+
+    userDetailsHeader: {
+        display: 'flex',
+        alignItems: 'center',
+        gap: 12,
+        marginBottom: 24,
+        paddingBottom: 20,
+        borderBottom: '2px solid #e5e7eb'
+    },
+
+    userAvatar: {
+        width: 48,
+        height: 48,
+        borderRadius: '50%',
+        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        fontSize: 24
+    },
+
+    userName: {
+        margin: 0,
+        fontSize: 16,
+        fontWeight: 600,
+        color: '#111827'
+    },
+
+    userEmail: {
+        margin: '4px 0 0 0',
+        fontSize: 13,
+        color: '#6b7280'
+    },
+
+    userStats: {
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 16
+    },
+
+    statItem: {
+        padding: 12,
+        background: '#f9fafb',
+        borderRadius: 8,
+        border: '1px solid #e5e7eb'
+    },
+
+    statLabel: {
+        fontSize: 11,
+        fontWeight: 600,
+        color: '#6b7280',
+        textTransform: 'uppercase',
+        letterSpacing: '0.5px',
+        marginBottom: 6
+    },
+
+    statValue: {
+        fontSize: 15,
+        fontWeight: 600,
+        color: '#111827'
+    },
+
+    toolCall: {
+        fontSize: 12,
+        padding: '6px 10px',
+        background: '#fef3c7',
+        color: '#92400e',
+        borderRadius: 6,
+        marginTop: 6,
+        display: 'inline-block'
+    },
+
+    toolResult: {
+        fontSize: 12,
+        padding: '6px 10px',
+        background: '#d1fae5',
+        color: '#065f46',
+        borderRadius: 6,
+        marginTop: 6,
+        display: 'inline-block'
     },
 
     routingBanner: {
