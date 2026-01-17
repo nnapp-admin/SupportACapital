@@ -41,8 +41,8 @@ export async function handleChat(userId: string, message: string, conversationId
     const routing = await routeAgent(message, history)
 
     // Safety fallback: ensure routing result is valid
-    const intent = (routing === 'order' || routing === 'billing' || routing === 'support')
-        ? routing
+    const intent = (routing.intent === 'order' || routing.intent === 'billing' || routing.intent === 'support')
+        ? routing.intent
         : 'support'
 
     let tools = {}
@@ -93,5 +93,5 @@ export async function handleChat(userId: string, message: string, conversationId
         }
     })
 
-    return stream
+    return { stream, routing: { agent: intent, reasoning: routing.reasoning } }
 }

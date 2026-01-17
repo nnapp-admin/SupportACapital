@@ -21,6 +21,6 @@ export async function routeAgent(message: string, history: any[] = []) {
         ]
     });
 
-    return object.intent;
+    return object
 }
 

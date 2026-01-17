@@ -3,7 +3,8 @@ const API_BASE = '/api'
 export async function streamChat(
     message: string,
     conversationId: string | null,
-    onChunk: (t: string) => void
+    onChunk: (t: string) => void,
+    onRouting?: (routing: { agent: string; reasoning: string }) => void
 ) {
     const res = await fetch(`${API_BASE}/chat/messages`, {
         method: 'POST',
@@ -21,11 +22,42 @@ export async function streamChat(
 
     const reader = res.body.getReader()
     const decoder = new TextDecoder()
+    let buffer = ''
+    let isFirstChunk = true
 
     while (true) {
         const { value, done } = await reader.read()
         if (done) break
-        onChunk(decoder.decode(value))
+
+        buffer += decoder.decode(value, { stream: true })
+
+        // Parse routing metadata from first line
+        if (isFirstChunk && buffer.includes('\n')) {
+            const firstLineEnd = buffer.indexOf('\n')
+            const firstLine = buffer.slice(0, firstLineEnd)
+            buffer = buffer.slice(firstLineEnd + 1)
+            isFirstChunk = false
+
+            try {
+                const parsed = JSON.parse(firstLine)
+                if (parsed.type === 'routing' && onRouting) {
+                    onRouting(parsed.data)
+                }
+            } catch (e) {
+                // If not JSON, treat as regular text
+                onChunk(firstLine + '\n')
+            }
+        }
+
+        if (!isFirstChunk && buffer) {
+            onChunk(buffer)
+            buffer = ''
+        }
+    }
+
+    // Send any remaining buffer
+    if (buffer) {
+        onChunk(buffer)
     }
 }
 

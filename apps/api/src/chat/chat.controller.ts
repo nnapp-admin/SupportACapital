@@ -12,20 +12,38 @@ chatController.post('/messages', async (c) => {
             return c.json({ error: 'userId and message are required' }, 400)
         }
 
-        const result = await handleChat(userId, message, conversationId)
+        const { stream, routing } = await handleChat(userId, message, conversationId)
 
-        /**
-         * IMPORTANT:
-         * We must stream TEXT, not objects.
-         * streamText() returns DefaultStreamTextResult
-         */
-        const textStream = result.textStream
+        // Create a custom stream that sends metadata first, then text
+        const encoder = new TextEncoder()
+        const textStream = stream.textStream
 
-        return new Response(textStream, {
+        const customStream = new ReadableStream({
+            async start(controller) {
+                // Send routing metadata as first chunk
+                const metadata = JSON.stringify({ type: 'routing', data: routing }) + '\n'
+                controller.enqueue(encoder.encode(metadata))
+
+                // Then stream the text
+                const reader = textStream.getReader()
+                try {
+                    while (true) {
+                        const { done, value } = await reader.read()
+                        if (done) break
+                        controller.enqueue(value)
+                    }
+                } finally {
+                    reader.releaseLock()
+                    controller.close()
+                }
+            }
+        })
+
+        return new Response(customStream, {
             status: 200,
             headers: {
                 'Content-Type': 'text/plain; charset=utf-8',
-                'X-Agent-Type': 'ai-support',
+                'X-Agent-Type': routing.agent,
                 'Cache-Control': 'no-cache',
                 'Connection': 'keep-alive',
             },
