@@ -85,3 +85,26 @@ chatController.delete('/conversations/:id', async (c) => {
     await prisma.conversation.delete({ where: { id } })
     return c.json({ success: true })
 })
+
+chatController.post('/reset', async (c) => {
+    try {
+        const { userId } = await c.req.json()
+
+        if (!userId) {
+            return c.json({ error: 'userId is required' }, 400)
+        }
+
+        const result = await prisma.conversation.deleteMany({
+            where: { userId }
+        })
+
+        return c.json({
+            success: true,
+            message: `Deleted ${result.count} conversation(s) for user ${userId}`,
+            deletedCount: result.count
+        })
+    } catch (error) {
+        console.error('Reset error:', error)
+        return c.json({ error: 'Failed to reset conversations' }, 500)
+    }
+})

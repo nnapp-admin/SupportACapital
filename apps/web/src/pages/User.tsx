@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
-import { getConversations, getConversation, streamChat } from '../api/client'
+import { getConversations, getConversation, streamChat, resetConversations } from '../api/client'
 
 export default function User() {
     const [conversations, setConversations] = useState<any[]>([])
@@ -9,7 +9,7 @@ export default function User() {
     const [localInput, setLocalInput] = useState('')
     const [isLoading, setIsLoading] = useState(false)
     const [currentRouting, setCurrentRouting] = useState<{ agent: string; reasoning: string } | null>(null)
-    const [viewMode, setViewMode] = useState<'user' | 'admin'>('admin')
+
 
     useEffect(() => {
         loadConversations()
@@ -50,6 +50,25 @@ export default function User() {
         setMessages([])
     }
 
+    const handleReset = async () => {
+        if (!confirm('Are you sure you want to delete all your chat conversations? This will NOT delete your profile, orders, or payment history.')) return
+        setIsLoading(true)
+        try {
+            const data = await resetConversations()
+            if (data.success) {
+                setConversations([])
+                setActiveId(undefined)
+                setMessages([])
+                alert(`Successfully deleted ${data.deletedCount || 0} conversation(s)`)
+            }
+        } catch (e) {
+            console.error(e)
+            alert('Failed to reset conversations')
+        } finally {
+            setIsLoading(false)
+        }
+    }
+
     const handleSend = async (e?: React.FormEvent) => {
         e?.preventDefault()
         if (!localInput.trim() || isLoading) return
@@ -61,24 +80,68 @@ export default function User() {
         const userMessage = { id: Date.now().toString(), role: 'user', content }
         setMessages(prev => [...prev, userMessage])
 
-        try {
-            const assistantId = (Date.now() + 1).toString()
-            setMessages(prev => [...prev, { id: assistantId, role: 'assistant', content: '' }])
+        const assistantId = (Date.now() + 1).toString()
+        // ✅ Fix: Use a placeholder state
+        setMessages(prev => [
+            ...prev,
+            {
+                id: assistantId,
+                role: 'assistant',
+                content: [{ type: 'thinking', text: 'Thinking…' }]
+            }
+        ])
 
+        try {
             let fullContent = ''
+            let receivedAnyChunk = false
+
             await streamChat(
                 content,
                 activeId || null,
                 chunk => {
+                    receivedAnyChunk = true
                     fullContent += chunk
+
                     setMessages(prev =>
-                        prev.map(m => (m.id === assistantId ? { ...m, content: fullContent } : m))
+                        prev.map(m =>
+                            m.id === assistantId
+                                ? { ...m, content: fullContent || '…' }
+                                : m
+                        )
                     )
                 },
                 routing => {
                     setCurrentRouting(routing)
+
+                    // show routing as a bubble immediately
+                    setMessages(prev =>
+                        prev.map(m =>
+                            m.id === assistantId
+                                ? {
+                                    ...m,
+                                    content: [
+                                        {
+                                            type: 'thinking',
+                                            text: `Routing to ${routing.agent.toUpperCase()} agent`
+                                        }
+                                    ]
+                                }
+                                : m
+                        )
+                    )
                 }
             )
+
+            // 🛡️ Final safety net
+            if (!receivedAnyChunk) {
+                setMessages(prev =>
+                    prev.map(m =>
+                        m.id === assistantId
+                            ? { ...m, content: '⚠️ No response generated. Please retry.' }
+                            : m
+                    )
+                )
+            }
 
             await loadConversations()
         } catch (error) {
@@ -93,38 +156,42 @@ export default function User() {
     }
 
     const renderContent = (content: any) => {
-        // Handle string content
-        if (typeof content === 'string') {
-            return content
+        if (!content) {
+            return <em style={{ opacity: 0.6 }}>Thinking…</em>
         }
 
-        // Handle array content (AI SDK messages with tool calls)
+        if (typeof content === 'string') {
+            return content.trim() ? content : <em style={{ opacity: 0.6 }}>Thinking…</em>
+        }
+
         if (Array.isArray(content)) {
             return content.map((part, i) => {
-                if (typeof part === 'string') {
-                    return <span key={i}>{part}</span>
+                if (!part) return null
+
+                if (part.type === 'thinking') {
+                    return (
+                        <div key={i} style={styles.thinkingBubble}>
+                            🧠 {part.text || 'Thinking…'}
+                        </div>
+                    )
                 }
 
                 if (part.type === 'text') {
                     return <span key={i}>{part.text}</span>
                 }
 
-                // Only show tool calls in Admin View
                 if (part.type === 'tool-call') {
-                    if (viewMode === 'user') return null
                     return (
                         <div key={i} style={styles.toolCall}>
-                            🔧 Calling tool: <strong>{part.toolName}</strong>
+                            ⚙️ Using <b>{part.toolName}</b>
                         </div>
                     )
                 }
 
-                // Only show tool results in Admin View
                 if (part.type === 'tool-result') {
-                    if (viewMode === 'user') return null
                     return (
                         <div key={i} style={styles.toolResult}>
-                            ✅ Tool completed
+                            ✅ Tool result received
                         </div>
                     )
                 }
@@ -133,12 +200,8 @@ export default function User() {
             })
         }
 
-        // Handle object content - try to extract text or stringify
-        if (typeof content === 'object' && content !== null) {
-            if (content.text) {
-                return content.text
-            }
-            return JSON.stringify(content)
+        if (typeof content === 'object') {
+            return JSON.stringify(content, null, 2)
         }
 
         return String(content)
@@ -174,6 +237,13 @@ export default function User() {
 
                 <button onClick={onCreateChat} style={styles.newChatBtn}>
                     + New Chat
+                </button>
+                <button
+                    onClick={handleReset}
+                    style={styles.resetBtn}
+                    disabled={isLoading}
+                >
+                    🗑️ Clear Chat History
                 </button>
 
                 {conversations.map(c => (
@@ -235,50 +305,31 @@ export default function User() {
 
             {/* Chat Area */}
             <main style={styles.main}>
-                {/* View Mode Toggle */}
-                <div style={styles.viewToggleHeader}>
-                    <div style={styles.viewTabs}>
-                        <button
-                            onClick={() => setViewMode('user')}
-                            style={viewMode === 'user' ? styles.viewTabActive : styles.viewTab}
-                        >
-                            View as User
-                        </button>
-                        <button
-                            onClick={() => setViewMode('admin')}
-                            style={viewMode === 'admin' ? styles.viewTabActive : styles.viewTab}
-                        >
-                            View as Admin
-                        </button>
-                    </div>
-                </div>
-
-                {/* Routing Banner - Only in Admin Mode */}
-                {viewMode === 'admin' && currentRouting && (
+                {/* Routing Banner */}
+                {currentRouting && (
                     <div style={styles.routingBanner}>
                         <div style={styles.routingHeader}>
-                            <div style={styles.routingIcon}>
-                                {currentRouting.agent === 'order' && '📦'}
-                                {currentRouting.agent === 'billing' && '💳'}
-                                {currentRouting.agent === 'support' && '🎧'}
-                            </div>
+                            <div style={styles.routingIcon}>🧭</div>
                             <div>
                                 <div style={styles.routingTitle}>
-                                    Handled by:{' '}
-                                    <span style={{
-                                        ...styles.agentBadge,
-                                        background: getAgentColor(currentRouting.agent)
-                                    }}>
-                                        {currentRouting.agent.toUpperCase()} Agent
+                                    Routing to
+                                    <span
+                                        style={{
+                                            ...styles.agentBadge,
+                                            background: getAgentColor(currentRouting.agent)
+                                        }}
+                                    >
+                                        {currentRouting.agent.toUpperCase()}
                                     </span>
                                 </div>
                                 <div style={styles.routingReasoning}>
-                                    {currentRouting.reasoning}
+                                    {currentRouting.reasoning || 'Analyzing request…'}
                                 </div>
                             </div>
                         </div>
                     </div>
                 )}
+
 
                 {/* Messages List */}
                 <div style={styles.messageList}>
@@ -405,6 +456,23 @@ const styles: Record<string, React.CSSProperties> = {
         background: '#fff',
         cursor: 'pointer',
         fontWeight: 500
+    },
+
+    resetBtn: {
+        width: '100%',
+        background: '#fff',
+        color: '#dc2626',
+        border: '1px solid #fee2e2',
+        padding: '10px 16px',
+        borderRadius: 8,
+        fontSize: 13,
+        fontWeight: 600,
+        cursor: 'pointer',
+        transition: 'all 0.2s',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 8
     },
 
     conversationItem: {
@@ -541,24 +609,47 @@ const styles: Record<string, React.CSSProperties> = {
         color: '#111827'
     },
 
+    thinkingBubble: {
+        fontSize: 13,
+        padding: '10px 14px',
+        background: 'linear-gradient(135deg, #e0e7ff, #f5f3ff)',
+        color: '#3730a3',
+        borderRadius: 14,
+        marginTop: 6,
+        marginBottom: 6,
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 6,
+        fontStyle: 'italic',
+        border: '1px solid #c7d2fe'
+    },
+
     toolCall: {
         fontSize: 12,
-        padding: '6px 10px',
-        background: '#fef3c7',
+        padding: '8px 12px',
+        background: 'linear-gradient(to right, #fef3c7, #fffbeb)',
         color: '#92400e',
-        borderRadius: 6,
+        borderRadius: 12,
         marginTop: 6,
-        display: 'inline-block'
+        marginBottom: 6,
+        display: 'flex',
+        alignItems: 'center',
+        border: '1px solid #fcd34d',
+        maxWidth: 'fit-content'
     },
 
     toolResult: {
         fontSize: 12,
-        padding: '6px 10px',
-        background: '#d1fae5',
+        padding: '8px 12px',
+        background: 'linear-gradient(to right, #d1fae5, #ecfdf5)',
         color: '#065f46',
-        borderRadius: 6,
+        borderRadius: 12,
         marginTop: 6,
-        display: 'inline-block'
+        marginBottom: 6,
+        display: 'flex',
+        alignItems: 'center',
+        border: '1px solid #6ee7b7',
+        maxWidth: 'fit-content'
     },
 
     routingBanner: {

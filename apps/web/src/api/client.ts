@@ -70,3 +70,12 @@ export async function getConversation(id: string) {
     const res = await fetch(`${API_BASE}/chat/conversations/${id}`)
     return res.json()
 }
+
+export async function resetConversations() {
+    const res = await fetch(`${API_BASE}/chat/reset`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: 'demo-user' })
+    })
+    return res.json()
+}
