@@ -9,6 +9,7 @@ export default function User() {
     const [localInput, setLocalInput] = useState('')
     const [isLoading, setIsLoading] = useState(false)
     const [currentRouting, setCurrentRouting] = useState<{ agent: string; reasoning: string } | null>(null)
+    const [viewMode, setViewMode] = useState<'user' | 'admin'>('admin')
 
     useEffect(() => {
         loadConversations()
@@ -23,6 +24,10 @@ export default function User() {
         try {
             const data = await getConversations()
             setConversations(data)
+            // Auto-select first chat if activeId is undefined
+            if (data && data.length > 0 && !activeId) {
+                setActiveId(data[0].id)
+            }
         } catch (e) {
             console.error(e)
         }
@@ -104,7 +109,9 @@ export default function User() {
                     return <span key={i}>{part.text}</span>
                 }
 
+                // Only show tool calls in Admin View
                 if (part.type === 'tool-call') {
+                    if (viewMode === 'user') return null
                     return (
                         <div key={i} style={styles.toolCall}>
                             🔧 Calling tool: <strong>{part.toolName}</strong>
@@ -112,7 +119,9 @@ export default function User() {
                     )
                 }
 
+                // Only show tool results in Admin View
                 if (part.type === 'tool-result') {
+                    if (viewMode === 'user') return null
                     return (
                         <div key={i} style={styles.toolResult}>
                             ✅ Tool completed
@@ -224,10 +233,28 @@ export default function User() {
                 </aside>
             )}
 
-            {/* Chat */}
-            <main style={styles.chat}>
-                {/* Routing Info Banner */}
-                {currentRouting && (
+            {/* Chat Area */}
+            <main style={styles.main}>
+                {/* View Mode Toggle */}
+                <div style={styles.viewToggleHeader}>
+                    <div style={styles.viewTabs}>
+                        <button
+                            onClick={() => setViewMode('user')}
+                            style={viewMode === 'user' ? styles.viewTabActive : styles.viewTab}
+                        >
+                            View as User
+                        </button>
+                        <button
+                            onClick={() => setViewMode('admin')}
+                            style={viewMode === 'admin' ? styles.viewTabActive : styles.viewTab}
+                        >
+                            View as Admin
+                        </button>
+                    </div>
+                </div>
+
+                {/* Routing Banner - Only in Admin Mode */}
+                {viewMode === 'admin' && currentRouting && (
                     <div style={styles.routingBanner}>
                         <div style={styles.routingHeader}>
                             <div style={styles.routingIcon}>
@@ -253,7 +280,8 @@ export default function User() {
                     </div>
                 )}
 
-                <div style={styles.messages}>
+                {/* Messages List */}
+                <div style={styles.messageList}>
                     {messages.map(m => (
                         <div
                             key={m.id}
@@ -397,17 +425,12 @@ const styles: Record<string, React.CSSProperties> = {
         marginTop: 4
     },
 
-    chat: {
+    main: {
         flex: 1,
         display: 'flex',
         flexDirection: 'column',
-        padding: 20
-    },
-
-    messages: {
-        flex: 1,
-        overflowY: 'auto',
-        paddingBottom: 16
+        padding: 20,
+        background: '#91919136' // Faint orange/yellow background
     },
 
     messageRow: {
@@ -583,5 +606,52 @@ const styles: Record<string, React.CSSProperties> = {
         color: 'rgba(255, 255, 255, 0.9)',
         lineHeight: 1.5,
         fontStyle: 'italic'
+    },
+
+    viewToggleHeader: {
+        padding: '12px 16px',
+        borderBottom: '1px solid #e5e7eb',
+        marginBottom: 16,
+        display: 'flex',
+        justifyContent: 'center'
+    },
+
+    viewTabs: {
+        display: 'flex',
+        background: '#f3f4f6',
+        padding: 4,
+        borderRadius: 8,
+        gap: 4
+    },
+
+    viewTab: {
+        padding: '6px 16px',
+        borderRadius: 6,
+        border: 'none',
+        background: 'transparent',
+        fontSize: 13,
+        fontWeight: 500,
+        color: '#6b7280',
+        cursor: 'pointer',
+        transition: 'all 0.2s'
+    },
+
+    viewTabActive: {
+        padding: '6px 16px',
+        borderRadius: 6,
+        border: 'none',
+        background: '#fff',
+        fontSize: 13,
+        fontWeight: 600,
+        color: '#111827',
+        cursor: 'pointer',
+        boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
+        transition: 'all 0.2s'
+    },
+
+    messageList: {
+        flex: 1,
+        overflowY: 'auto',
+        paddingBottom: 16
     }
 }
